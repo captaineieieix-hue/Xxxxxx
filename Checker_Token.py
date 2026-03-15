@@ -111,11 +111,10 @@ def box_row_raw(content, c=Cy):
 # ── Fancy Title ───────────────────────────────────────
 def title(txt, c=Mg, icon=''):
     blank()
-    print(f"  {c}╔{'═'*W}╗{R}")
-    label = f"  {icon+'  ' if icon else ''}{txt}"
-    pad   = W - len(label)
-    print(f"  {c}║{R}{BD}{c}{label}{' '*max(pad,1)}{R}{c}║{R}")
-    print(f"  {c}╚{'═'*W}╝{R}")
+    label = f"  {icon}  {txt}" if icon else f"  {txt}"
+    print(f"  {c}{'═'*W}{R}")
+    print(f"  {c}{BD}{label}{R}")
+    print(f"  {c}{'═'*W}{R}")
     blank()
 
 # ── Section header ────────────────────────────────────
@@ -220,14 +219,10 @@ def banner():
     for line in _ART_TOKEN.split('\n'):
         print(_grad(line, _GRAD_ICE))
     blank()
-    # Info bar
-    now    = datetime.now().strftime('%H:%M:%S')
-    lline  = f"  v5.1  ·  Termux Edition  ·  Advanced Scanner"
-    rline  = f"  {now}"
-    spaces = W - len(lline) + 4 - len(rline) + 4
-    print(f"  {DM}╔{'═'*W}╗")
-    print(f"  ║{R}{Cy}{lline}{R}{DM}{' '*max(spaces,1)}{rline}  {DM}║")
-    print(f"  ╚{'═'*W}╝{R}")
+    now = datetime.now().strftime('%H:%M:%S')
+    print(f"  {DM}{'─'*W}{R}")
+    print(f"  {Cy}v5.1{R}  {DM}·{R}  {Cy}Termux Edition{R}  {DM}·{R}  {Cy}Advanced Scanner{R}  {DM}·  {now}{R}")
+    print(f"  {DM}{'─'*W}{R}")
     blank()
 
 # ╔══════════════════════════════════════════════════════╗
@@ -348,17 +343,17 @@ def print_base_info(d, res_type, dec=None):
             else f"{d.get('username','?')}#{disc}"
     is_bot = res_type == 'Bot Token'
 
-    # ── Header card ──────────────────────────────────
+    # ── Header card (no right border — avoids ANSI len bug) ──
     blank()
-    print(f"  {Cy}╔{'═'*W}╗{R}")
+    print(f"  {Cy}{'═'*W}{R}")
     t_type = tag_ok('USER') if not is_bot else tag_info('BOT')
-    print(f"  {Cy}║{R}  {t_type}  {BD}{Wh}{uname}{R}{Cy}{'':>{W-len(uname)-10}}║{R}")
-    print(f"  {Cy}║{R}  {DM}ID: {d.get('id','?')}{Cy}{'':>{W-len(str(d.get('id','?')))-6}}║{R}")
+    print(f"  {t_type}  {BD}{Wh}{uname}{R}")
+    print(f"  {DM}ID : {Wh}{d.get('id','?')}{R}")
     if dec:
-        ca_str = dec['created'].strftime('%Y-%m-%d  %H:%M:%S')
-        age_str= f"{dec['years']}y {dec['months']}m {dec['days']}d"
-        print(f"  {Cy}║{R}  {DM}Created: {ca_str}   Age: {age_str}{Cy}{'':>2}║{R}")
-    print(f"  {Cy}╚{'═'*W}╝{R}")
+        ca_str  = dec['created'].strftime('%Y-%m-%d  %H:%M:%S')
+        age_str = f"{dec['years']}y {dec['months']}m {dec['days']}d"
+        print(f"  {DM}Created : {Wh}{ca_str}  {DM}Age : {Cy}{age_str}{R}")
+    print(f"  {Cy}{'═'*W}{R}")
     blank()
 
     if not is_bot:
@@ -667,8 +662,10 @@ def save_report(token, dec, res, extra=None):
 # ╚══════════════════════════════════════════════════════╝
 def get_tok(prompt="ใส่โทเคน Discord"):
     blank()
-    print(f"  {DM}┌─ Token Input {'─'*(W-14)}┐{R}")
-    t = _inp(f"  {DM}│{R}  {Cy}{BD}{prompt}{R}  {DM}│{R}\n  {DM}└{'─'*W}┘{R}\n  {Cy}> {R}")
+    print(f"  {DM}┌─ Token Input {'─'*(W-14)}{R}")
+    print(f"  {DM}│{R}  {Cy}{BD}{prompt}{R}")
+    print(f"  {DM}└{'─'*W}{R}")
+    t = _inp(f"  {Cy}> {R}")
     if not t:
         err("กรุณาใส่โทเคน"); pause("กด Enter เพื่อกลับ"); return None
     return t
@@ -996,27 +993,26 @@ def main():
     while True:
         banner()
 
-        # Menu box
-        print(f"  {Cy}╔{'═'*W}╗{R}")
-        print(f"  {Cy}║{R}  {BD}{'เลือกโหมดการทำงาน':^{W-2}}{R}  {Cy}║{R}")
-        print(f"  {Cy}╠{'═'*W}╣{R}")
+        # ── Menu header ───────────────────────────────
+        print(f"  {Cy}{'═'*W}{R}")
+        print(f"  {BD}{Cy}  เลือกโหมดการทำงาน{R}")
+        print(f"  {Cy}{'═'*W}{R}")
         blank()
 
         for num,icon,name,sub,col,hot in MENU:
+            sub_txt = f"  {DM}{sub}{R}" if sub else ''
             if hot:
-                # Highlighted entry
-                line = f"  {BGm}{Wh}{BD} {num} {R}  {icon}  {Mg}{BD}{name:<18}{R}  {DM}{sub}{R}"
+                print(f"  {BGm}{Wh}{BD} {num} {R}  {icon}  {Mg}{BD}{name}{R}{sub_txt}")
             elif num == '0':
-                line = f"  {Rd}{BD} {num} {R}  {icon}  {Rd}{name}{R}"
+                print(f"  {BGr}{Wh}{BD} {num} {R}  {icon}  {Rd}{BD}{name}{R}")
             else:
-                line = f"  {col}{BD} {num} {R}  {icon}  {col}{name:<18}{R}  {DM}{sub}{R}"
-            print(line)
+                print(f"  {col}{BD} {num} {R}  {icon}  {col}{name}{R}{sub_txt}")
 
         blank()
-        print(f"  {Cy}╚{'═'*W}╝{R}")
+        print(f"  {Cy}{'─'*W}{R}")
 
         try:
-            ch = _inp(f"\n  {Cy}{BD}  เลือก (0-8){R}  {DM}>{R}  ")
+            ch = _inp(f"\n  {Cy}{BD}เลือก (0-8){R}  {DM}>{R}  ")
         except EOFError: break
 
         if ch == '0':
