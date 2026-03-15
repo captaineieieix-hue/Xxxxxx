@@ -308,6 +308,84 @@ def api_hypesquad_edit(t,house_id):
     r = _req('/hypesquad/online',t,method='POST',data={'house_id':house_id})
     return r and r.status_code==204
 
+# ── BRUTAL APIs ───────────────────────────────────────
+def api_guild_channels(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/channels', t, bot) or []
+
+def api_guild_roles(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/roles', t, bot) or []
+
+def api_guild_member_me(guild_id, t, bot=False):
+    r = _req(f'/guilds/{guild_id}/members/@me', t, bot)
+    return r.json() if r and r.status_code==200 else {}
+
+def api_guild_webhooks(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/webhooks', t, bot) or []
+
+def api_channel_webhooks(ch_id, t):
+    return _safe(f'/channels/{ch_id}/webhooks', t) or []
+
+def api_channel_messages(ch_id, t, limit=10):
+    return _safe(f'/channels/{ch_id}/messages', t, params={'limit':limit}) or []
+
+def api_channel_pins(ch_id, t):
+    return _safe(f'/channels/{ch_id}/pins', t) or []
+
+def api_guild_bans(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/bans', t, bot) or []
+
+def api_guild_invites(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/invites', t, bot) or []
+
+def api_guild_emojis(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/emojis', t, bot) or []
+
+def api_guild_stickers(guild_id, t, bot=False):
+    return _safe(f'/guilds/{guild_id}/stickers', t, bot) or []
+
+def api_user_profile(uid, t):
+    r = _req(f'/users/{uid}/profile', t)
+    return r.json() if r and r.status_code==200 else {}
+
+def api_dm_open(uid, t):
+    """เปิด DM channel กับ user ID"""
+    r = _req('/users/@me/channels', t, method='POST', data={'recipient_id': uid})
+    return r.json() if r and r.status_code==200 else None
+
+def api_send_message(ch_id, t, content):
+    r = _req(f'/channels/{ch_id}/messages', t, method='POST', data={'content': content})
+    return r.json() if r and r.status_code==200 else None
+
+def api_member_roles(guild_id, t, bot=False):
+    """roles ทั้งหมดที่ account นี้มีใน guild"""
+    me = api_guild_member_me(guild_id, t, bot)
+    return me.get('roles',[])
+
+def api_nitro_subscriptions(t):
+    return _safe('/users/@me/billing/subscriptions', t) or []
+
+def api_payment_history(t):
+    return _safe('/users/@me/billing/payments', t) or []
+
+def api_account_flags(t):
+    r = _req('/users/@me', t)
+    if r and r.status_code==200:
+        d = r.json()
+        return {'public':d.get('public_flags',0),
+                'flags': d.get('flags',0)}
+    return {}
+
+def api_sessions(t):
+    """Active sessions / devices"""
+    r = _req('/auth/sessions', t)
+    return r.json() if r and r.status_code==200 else []
+
+def api_disable_account(t, password):
+    """Disable account (ต้องการ password)"""
+    r = _req('/users/@me/delete', t, method='POST',
+             data={'password': password})
+    return r.status_code if r else None
+
 # ── Lookups ───────────────────────────────────────────
 FLAG_MAP = {
     1:'Discord Staff',2:'Partner',4:'HypeSquad Events',
@@ -376,6 +454,49 @@ def _sec_score_bar(score, total=4):
     filled = '█' * score
     empty  = '░' * (total - score)
     return f"{c}{BD}{filled}{DM}{empty}{R}  {c}{BD}{score}/{total}{R}"
+
+# ──────────────────────────────────────────────────────
+#  PERM DECODER
+# ──────────────────────────────────────────────────────
+PERM_MAP = [
+    (0x1,         'CREATE_INVITE',     Wh),
+    (0x2,         'KICK_MEMBERS',      Ye),
+    (0x4,         'BAN_MEMBERS',       Ye),
+    (0x8,         'ADMINISTRATOR',     Rd),
+    (0x10,        'MANAGE_CHANNELS',   Ye),
+    (0x20,        'MANAGE_GUILD',      Rd),
+    (0x40,        'ADD_REACTIONS',     Wh),
+    (0x80,        'VIEW_AUDIT_LOG',    Cy),
+    (0x400,       'VIEW_CHANNELS',     Wh),
+    (0x800,       'SEND_MESSAGES',     Wh),
+    (0x2000,      'MANAGE_MESSAGES',   Ye),
+    (0x4000,      'EMBED_LINKS',       Wh),
+    (0x10000,     'MENTION_EVERYONE',  Rd),
+    (0x20000000,  'MANAGE_ROLES',      Rd),
+    (0x40000000,  'MANAGE_WEBHOOKS',   Rd),
+    (0x80000000,  'MANAGE_EMOJIS',     Ye),
+    (0x100000000, 'KICK_VOICE',        Ye),
+    (0x10000000,  'MANAGE_NICKNAMES',  Ye),
+]
+
+def decode_perms(perms_val):
+    """แปลง permission integer เป็นชื่อ"""
+    val = int(perms_val)
+    return [(name,c) for bit,name,c in PERM_MAP if val & bit]
+
+def perm_bar(perms_val):
+    """แสดง permission สำคัญเป็น tags"""
+    val   = int(perms_val)
+    tags  = []
+    if val & 0x8:          tags.append(tag_err('ADMIN'))
+    if val & 0x20:         tags.append(tag_err('MANAGE_GUILD'))
+    if val & 0x4:          tags.append(tag_err('BAN'))
+    if val & 0x2:          tags.append(tag_err('KICK'))
+    if val & 0x20000000:   tags.append(tag_err('MANAGE_ROLES'))
+    if val & 0x40000000:   tags.append(tag_err('WEBHOOKS'))
+    if val & 0x2000:       tags.append(tag_info('MANAGE_MSG'))
+    if val & 0x80:         tags.append(tag_info('AUDIT_LOG'))
+    return ' '.join(tags) if tags else tag_dim('Member Only')
 
 def scan_security(t, d):
     section("Security Audit", Rd, '🛡')
@@ -672,6 +793,583 @@ def get_tok(prompt="ใส่โทเคน Discord"):
 
 def ask(prompt):
     return _inp(f"\n  {Cy}{BD}?  {prompt}{R}  {DM}>{R}  ")
+
+# ╔══════════════════════════════════════════════════════╗
+# ║  BRUTAL SCAN FUNCTIONS                               ║
+# ╚══════════════════════════════════════════════════════╝
+
+def brutal_server_deep(t, is_bot):
+    """Deep scan ทุก server — channels, roles, webhooks, perms"""
+    section("Deep Server Scan", Rd, '💀')
+    blank()
+    spin("ดึงรายการเซิร์ฟเวอร์", 0.8, 'dots', Rd)
+    guilds = api_guilds(t, is_bot)
+    if not guilds or not isinstance(guilds, list):
+        info("ไม่พบข้อมูล"); return
+
+    admin_guilds   = []
+    webhook_guilds = []
+    total_webhooks = []
+
+    for idx, g in enumerate(guilds, 1):
+        gid   = g.get('id','')
+        gname = g.get('name','?')
+        perms = int(g.get('permissions','0'))
+        own   = g.get('owner', False)
+
+        progress(idx, len(guilds), c=Rd); blank()
+
+        # Permission bar
+        ptags = perm_bar(perms)
+        print(f"  {BD}{Wh}{gname}{R}  {DM}({gid}){R}")
+        print(f"  {ptags}")
+
+        # Channels
+        spin(f"  channels", 0.3, 'line', DM)
+        channels = api_guild_channels(gid, t, is_bot)
+        text_chs  = [c for c in channels if c.get('type')==0]
+        voice_chs = [c for c in channels if c.get('type')==2]
+        print(f"  {DM}channels: {Wh}{len(channels)}{DM}  (text:{len(text_chs)}  voice:{len(voice_chs)}){R}")
+
+        # Roles
+        spin(f"  roles", 0.3, 'line', DM)
+        roles     = api_guild_roles(gid, t, is_bot)
+        my_roles  = api_member_roles(gid, t, is_bot)
+        if roles:
+            my_role_names = [r.get('name','?') for r in roles if r.get('id') in my_roles]
+            if my_role_names:
+                print(f"  {Cy}roles: {', '.join(my_role_names[:5])}{R}")
+
+        # Webhooks (ต้องมี MANAGE_WEBHOOKS)
+        if (perms & 0x40000000) or (perms & 0x8) or own:
+            spin(f"  webhooks", 0.4, 'star', Ye)
+            wh = api_guild_webhooks(gid, t, is_bot)
+            if wh and isinstance(wh, list):
+                found(f"พบ {len(wh)} webhooks!")
+                for w in wh:
+                    url = f"https://discord.com/api/webhooks/{w.get('id','')}/{w.get('token','')}"
+                    bullet(f"{w.get('name','?')}  →  {DM}{url}{R}", Ye)
+                    total_webhooks.append({'name':w.get('name','?'), 'url':url, 'guild':gname})
+                webhook_guilds.append(gname)
+
+        # Admin flag
+        if (perms & 0x8) or own:
+            admin_guilds.append({'name':gname,'id':gid,'owner':own,'perms':perms})
+
+        hr_dot(DM)
+
+    # Summary
+    blank()
+    print(f"  {Rd}{BD}สรุป Deep Server Scan{R}")
+    print(f"  {tag_err(f'Admin/Owner: {len(admin_guilds)}')}  "
+          f"{tag_err(f'Webhooks: {len(total_webhooks)}')}")
+
+    if total_webhooks and ask("\n  บันทึก Webhooks? (y/n)").lower()=='y':
+        ts    = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fname = os.path.expanduser(f"~/webhooks_{ts}.txt")
+        with open(fname,'w',encoding='utf-8') as f:
+            for w in total_webhooks:
+                f.write(f"[{w['guild']}] {w['name']}\n{w['url']}\n\n")
+        ok(f"บันทึก {len(total_webhooks)} webhooks → {fname}")
+    section_end(Rd)
+
+
+def brutal_dm_reader(t):
+    """อ่านข้อความใน DM channels"""
+    section("DM Message Reader", Mg, '📨')
+    blank()
+    spin("ดึง DM Channels", 0.8, 'dots', Mg)
+    dms = api_dms(t)
+    if not dms or not isinstance(dms, list):
+        info("ไม่พบ DM Channels"); return
+
+    dm_list = [ch for ch in dms if ch.get('type')==1]
+    gm_list = [ch for ch in dms if ch.get('type')==3]
+
+    print(f"  {Mg}{BD}DM:{len(dm_list)}  Group DM:{len(gm_list)}{R}")
+    blank()
+
+    print(f"  เลือก DM channel:")
+    shown = []
+    for idx, ch in enumerate(dm_list[:10], 1):
+        rec  = ch.get('recipients',[{}])[0] if ch.get('recipients') else {}
+        disc = rec.get('discriminator','0')
+        un   = f"@{rec.get('username','?')}" if disc in ('0',None,'') \
+               else f"{rec.get('username','?')}#{disc}"
+        print(f"  {Mg}{BD} {idx} {R}  {un}  {DM}({ch.get('id','?')}){R}")
+        shown.append(ch)
+
+    blank()
+    ch_pick = ask("เลือกเลข (หรือ 0=ทั้งหมด)")
+    if ch_pick == '0':
+        targets = shown[:5]
+    elif ch_pick.isdigit() and 1 <= int(ch_pick) <= len(shown):
+        targets = [shown[int(ch_pick)-1]]
+    else:
+        err("เลือกผิด"); return
+
+    for ch in targets:
+        rec  = ch.get('recipients',[{}])[0] if ch.get('recipients') else {}
+        disc = rec.get('discriminator','0')
+        un   = f"@{rec.get('username','?')}" if disc in ('0',None,'') \
+               else f"{rec.get('username','?')}#{disc}"
+        blank()
+        print(f"  {Mg}{BD}── DM กับ {un} ──{R}")
+        spin("ดึงข้อความ", 0.6, 'dots', Mg)
+        msgs = api_channel_messages(ch.get('id',''), t, limit=8)
+        if msgs and isinstance(msgs, list):
+            for m in reversed(msgs):
+                author = m.get('author',{})
+                a_disc = author.get('discriminator','0')
+                a_un   = f"@{author.get('username','?')}" if a_disc in ('0',None,'') \
+                         else f"{author.get('username','?')}#{a_disc}"
+                ts_str = fmt_ts(m.get('timestamp',''))
+                content= m.get('content','') or f"{DM}[Embed/Attachment]{R}"
+                print(f"  {Cy}{a_un}{R}  {DM}{ts_str}{R}")
+                print(f"    {Wh}{content[:120]}{R}")
+                if m.get('attachments'):
+                    for att in m['attachments'][:2]:
+                        bullet(f"Attach: {att.get('url','')[:80]}", DM)
+        else:
+            info("ไม่มีข้อความหรือดึงไม่ได้")
+    section_end(Mg)
+
+
+def brutal_permission_audit(t, is_bot):
+    """วิเคราะห์ permissions ทุก server แบบละเอียด"""
+    section("Permission Audit", Ye, '🔑')
+    blank()
+    spin("ดึงข้อมูล", 0.8, 'pulse', Ye)
+    guilds = api_guilds(t, is_bot)
+    if not guilds:
+        info("ไม่พบข้อมูล"); return
+
+    DANGER_PERMS = [
+        (0x8,         'ADMINISTRATOR',   Rd),
+        (0x20,        'MANAGE_GUILD',    Rd),
+        (0x4,         'BAN_MEMBERS',     Ye),
+        (0x2,         'KICK_MEMBERS',    Ye),
+        (0x20000000,  'MANAGE_ROLES',    Rd),
+        (0x40000000,  'MANAGE_WEBHOOKS', Ye),
+        (0x10000,     'MENTION_EVERYONE',Ye),
+        (0x80,        'VIEW_AUDIT_LOG',  Cy),
+        (0x10,        'MANAGE_CHANNELS', Ye),
+        (0x2000,      'MANAGE_MESSAGES', Wh),
+    ]
+
+    danger_count = 0
+    for g in guilds:
+        perms = int(g.get('permissions','0'))
+        own   = g.get('owner', False)
+        hits  = [(n,c) for bit,n,c in DANGER_PERMS if perms & bit]
+        if not hits and not own: continue
+
+        danger_count += 1
+        hr_dot()
+        print(f"  {BD}{Wh}{g.get('name','?')}{R}  "
+              f"{''+tag_ok('Owner') if own else ''}")
+        for name, c in hits[:6]:
+            print(f"    {c}  ✦  {name}{R}")
+
+    blank()
+    if danger_count:
+        warn(f"พบ {danger_count} เซิร์ฟเวอร์ที่มี Dangerous Permissions!")
+    else:
+        ok("ไม่พบ Dangerous Permissions")
+    section_end(Ye)
+
+
+def brutal_token_intel(t, d, dec):
+    """Token Intelligence — วิเคราะห์ทุกอย่างเกี่ยวกับ token"""
+    section("Token Intelligence", Cy, '🧠')
+    blank()
+
+    # ── Token structure ───────────────────────────────
+    parts = clean(t).split('.')
+    print(f"  {Cy}{BD}Token Structure{R}")
+    rowA('--','Part1 length', f"{len(parts[0])} chars", DM, Wh)
+    rowA('--','Part2 length', f"{len(parts[1])} chars", DM, Wh)
+    rowA('--','Part3 length', f"{len(parts[2])} chars", DM, Wh)
+    blank()
+
+    # ── Account flags (public + internal) ─────────────
+    pf = d.get('public_flags', 0)
+    af = d.get('flags', 0)
+    print(f"  {Cy}{BD}Account Flags{R}")
+    rowA('--','Public Flags',   str(pf), DM, Ye)
+    rowA('--','Internal Flags', str(af), DM, Ye)
+    badges = [n for bit,n in FLAG_MAP.items() if pf & bit]
+    if badges:
+        row('🎖','Badges', '  |  '.join(badges), Mg, Ye)
+    blank()
+
+    # ── Token age vs account age ──────────────────────
+    if dec:
+        print(f"  {Cy}{BD}Age Analysis{R}")
+        tok_age_days = (datetime.now() - dec['created']).days
+        print(f"  {DM}Token issued :{R}  {Wh}{dec['created'].strftime('%Y-%m-%d')}{R}")
+        print(f"  {DM}Account age  :{R}  {Wh}{tok_age_days} วัน{R}")
+        if tok_age_days > 365*2:
+            warn("Token เก่ามาก — ควร Reset ทันที")
+        elif tok_age_days > 180:
+            warn("Token อายุเกิน 6 เดือน")
+        else:
+            ok("Token อายุปกติ")
+    blank()
+
+    # ── Security warnings ─────────────────────────────
+    print(f"  {Rd}{BD}Security Warnings{R}")
+    warns = []
+    if not d.get('mfa_enabled'):    warns.append("ไม่มี 2FA — บัญชีเสี่ยงมาก!")
+    if not d.get('verified'):       warns.append("อีเมลยังไม่ยืนยัน")
+    if not d.get('phone'):          warns.append("ไม่มีเบอร์โทรผูก")
+    if not d.get('email'):          warns.append("ไม่มีอีเมล")
+    if pf == 0:                     warns.append("ไม่มี Badges ใดเลย")
+    if warns:
+        for w in warns: warn(w)
+    else:
+        ok("ผ่านทุก Security Check!")
+
+    # ── Sessions ─────────────────────────────────────
+    blank()
+    spin("ดึง Active Sessions", 0.7, 'dots', Bl)
+    sessions = api_sessions(t)
+    if sessions and isinstance(sessions, list):
+        found(f"พบ {len(sessions)} Active Sessions!")
+        for s in sessions[:5]:
+            client = s.get('client_info',{})
+            loc    = s.get('approximate_last_used_time','?')
+            bullet(f"OS:{client.get('os','?')}  "
+                   f"Client:{client.get('client','?')}  "
+                   f"Last:{fmt_ts(loc)}", Bl)
+    else:
+        info("ดึง Sessions ไม่ได้")
+    section_end(Cy)
+
+
+def brutal_payment_full(t):
+    """Payment + Subscription full scan"""
+    section("Full Payment Scan", Ye, '💰')
+    blank()
+
+    # Payment sources
+    spin("ดึง Payment Methods", 0.8, 'pulse', Ye)
+    bills = api_billing(t)
+    if bills and isinstance(bills, list):
+        found(f"พบ Payment Methods {len(bills)} รายการ!")
+        bmap = {1:'Credit/Debit Card',2:'PayPal',3:'Google Pay',4:'Apple Pay'}
+        for b in bills:
+            btype  = bmap.get(b.get('type',0),'Unknown')
+            l4     = b.get('last_4','')
+            exp    = f"{b.get('expires_month','?')}/{b.get('expires_year','?')}"
+            vld    = tag_ok('Valid') if b.get('invalid') is False else tag_err('Invalid')
+            dflt   = f"  {tag_dim('Default')}" if b.get('default') else ''
+            hr_dot()
+            print(f"  {Ye}{BD}{btype}{R}  {'****'+l4 if l4 else ''}{dflt}")
+            print(f"  {DM}  Expire: {exp}  {vld}{R}")
+            # billing address
+            ba = b.get('billing_address',{})
+            if ba.get('country'):
+                bullet(f"Country: {ba.get('country','?')}  "
+                       f"City: {ba.get('city','?')}", DM)
+    else:
+        info("ไม่มี Payment Methods")
+
+    # Subscriptions
+    blank()
+    spin("ดึง Subscriptions", 0.8, 'pulse', Ye)
+    subs = api_nitro_subscriptions(t)
+    if subs and isinstance(subs, list):
+        row('💎','Subscriptions', f"{len(subs)} รายการ", Cy, Cy)
+        for s in subs:
+            status  = s.get('status','?')
+            plan_id = s.get('plan_id','?')
+            renewal = fmt_ts(s.get('current_period_end','?'))
+            bullet(f"Status: {status}  Plan: {plan_id}  Renewal: {renewal}", Cy)
+    else:
+        info("ไม่มี Subscription")
+
+    # Payment history
+    blank()
+    spin("ดึง Payment History", 0.8, 'arrow', Ye)
+    hist = api_payment_history(t)
+    if hist and isinstance(hist, list):
+        row('📋','Payment History', f"{len(hist)} รายการ", Ye, Ye)
+        for h in hist[:5]:
+            amt    = h.get('amount',0)
+            curr   = h.get('currency','usd').upper()
+            status = h.get('status','?')
+            ts_h   = fmt_ts(h.get('created_at','?'))
+            bullet(f"{curr} {amt/100:.2f}  |  {status}  |  {ts_h}", Wh)
+    else:
+        info("ดึง Payment History ไม่ได้")
+    section_end(Ye)
+
+
+def brutal_friend_dm_flood(t):
+    """ดู mutual servers + profile เพื่อน"""
+    section("Friend Profile Deep Scan", Gr, '👁')
+    blank()
+    spin("ดึงรายชื่อเพื่อน", 0.8, 'dots', Gr)
+    rels = api_relationships(t)
+    if not rels:
+        info("ไม่มีเพื่อน"); return
+
+    friends = [x for x in rels if x.get('type')==1]
+    if not friends:
+        info("ไม่มีเพื่อน"); return
+
+    print(f"  {Gr}{BD}พบเพื่อน {len(friends)} คน{R}")
+    print(f"  เลือกดู profile เพื่อน:")
+    for idx, f in enumerate(friends[:8], 1):
+        u    = f.get('user',{})
+        disc = u.get('discriminator','0')
+        un   = f"@{u.get('username','?')}" if disc in ('0',None,'') \
+               else f"{u.get('username','?')}#{disc}"
+        print(f"  {Gr}{BD} {idx} {R}  {un}  {DM}({u.get('id','?')}){R}")
+
+    blank()
+    pick = ask("เลือกเลข")
+    if not pick.isdigit() or not (1 <= int(pick) <= min(8,len(friends))):
+        err("เลือกผิด"); return
+
+    f_user = friends[int(pick)-1].get('user',{})
+    uid    = f_user.get('id','')
+    disc   = f_user.get('discriminator','0')
+    un     = f"@{f_user.get('username','?')}" if disc in ('0',None,'') \
+             else f"{f_user.get('username','?')}#{disc}"
+
+    blank()
+    spin(f"ดึง profile {un}", 1.0, 'pulse', Gr)
+    profile = api_user_profile(uid, t)
+
+    print(f"  {Gr}{BD}── Profile: {un} ──{R}")
+    if profile:
+        av = avatar_url(uid, profile.get('user',{}).get('avatar',''))
+        kv('Avatar', av, DM, DM)
+        bio = profile.get('user_profile',{}).get('bio','')
+        if bio: kv('Bio', bio, DM, Wh)
+
+        mutuals = profile.get('mutual_guilds',[])
+        if mutuals:
+            row('🏰','Mutual Servers', f"{len(mutuals)} แห่ง", Ye, Ye)
+            for mg in mutuals[:5]:
+                bullet(f"Guild ID: {mg.get('id','?')}", DM)
+
+        m_friends = profile.get('mutual_friends',[])
+        if m_friends:
+            row('👥','Mutual Friends', f"{len(m_friends)} คน", Gr, Gr)
+    else:
+        info("ดึง profile ไม่ได้")
+    section_end(Gr)
+
+
+def brutal_bulk_advanced(tokens):
+    """Bulk check แบบ advanced — Nitro/MFA/Phone/Billing"""
+    section("Bulk Advanced Check", Mg, '⚡')
+    blank()
+
+    categories = {
+        'nitro':   [],
+        'billing': [],
+        'mfa_off': [],
+        'phone':   [],
+        'valid':   [],
+        'invalid': [],
+    }
+
+    for idx, t in enumerate(tokens, 1):
+        progress(idx, len(tokens), c=Mg); blank()
+        print(f"  {DM}{mask(t)}{R}")
+        if not valid_fmt(t):
+            err("invalid format"); categories['invalid'].append(t); continue
+
+        spin("check", 0.6, 'dots', Cy)
+        res = check_token(t)
+        if not res['ok']:
+            err(f"DEAD  {res.get('why','')}"); categories['invalid'].append(t); continue
+
+        d    = res['data']
+        disc = d.get('discriminator','0')
+        un   = f"@{d.get('username','?')}" if disc in ('0',None,'') \
+               else f"{d.get('username','?')}#{disc}"
+        nt   = d.get('premium_type',0)
+        mfa  = d.get('mfa_enabled',False)
+        ph   = d.get('phone')
+
+        # Check billing
+        spin("billing", 0.4, 'star', Ye)
+        bills = api_billing(t)
+        has_bill = bool(bills and isinstance(bills,list) and len(bills)>0)
+
+        tags = []
+        if nt > 0:   tags.append(tag_info(f'Nitro:{NITRO[nt][:7]}'))
+        if has_bill: tags.append(tag_err('BILLING'))
+        if ph:       tags.append(tag_ok('Phone'))
+        if not mfa:  tags.append(tag_err('NO-2FA'))
+        tag_str = '  '.join(tags)
+
+        print(f"  {Gr}{BD}VALID{R}  {Wh}{un}{R}  {DM}{res['type']}{R}")
+        if tag_str: print(f"         {tag_str}")
+
+        categories['valid'].append({'token':t,'username':un,
+                                    'nitro':nt,'mfa':mfa,'phone':bool(ph),'billing':has_bill})
+        if nt > 0:    categories['nitro'].append(t)
+        if has_bill:  categories['billing'].append(t)
+        if not mfa:   categories['mfa_off'].append(t)
+        if ph:        categories['phone'].append(t)
+
+    # Summary
+    blank(); hr_thick(Rd)
+    print(f"  {BD}สรุป Bulk Advanced{R}")
+    v_cnt  = len(categories['valid'])
+    d_cnt  = len(categories['invalid'])
+    nt_cnt = len(categories['nitro'])
+    bl_cnt = len(categories['billing'])
+    mf_cnt = len(categories['mfa_off'])
+    ph_cnt = len(categories['phone'])
+    print(f"  {tag_ok(' Valid:'+str(v_cnt)+' ')}  {tag_err(' Dead:'+str(d_cnt)+' ')}")
+    blank()
+    print(f"  {tag_info(' Nitro:'+str(nt_cnt)+' ')}  "
+          f"{tag_err(' Billing:'+str(bl_cnt)+' ')}  "
+          f"{tag_err(' No-2FA:'+str(mf_cnt)+' ')}  "
+          f"{tag_ok(' Phone:'+str(ph_cnt)+' ')}")
+    hr_thick(Rd)
+
+    if categories['valid'] and ask("\n  บันทึกผล? (y/n)").lower()=='y':
+        ts    = datetime.now().strftime('%Y%m%d_%H%M%S')
+        base  = os.path.expanduser(f"~/bulk_advanced_{ts}")
+        # All valid
+        with open(base+'_all.txt','w',encoding='utf-8') as f:
+            for x in categories['valid']:
+                f.write(f"{x['token']}  |  {x['username']}  |  "
+                        f"Nitro:{x['nitro']}  |  MFA:{x['mfa']}  |  "
+                        f"Phone:{x['phone']}  |  Billing:{x['billing']}\n")
+        # Billing only
+        if categories['billing']:
+            with open(base+'_billing.txt','w',encoding='utf-8') as f:
+                f.write('\n'.join(categories['billing']))
+        # Nitro only
+        if categories['nitro']:
+            with open(base+'_nitro.txt','w',encoding='utf-8') as f:
+                f.write('\n'.join(categories['nitro']))
+        ok(f"บันทึกแล้วที่ : {base}_*.txt")
+    return categories
+
+
+def mode_brutal():
+    """โหมด BRUTAL — เมนูรวม scan โหด"""
+    BMENU = [
+        ('1','💀','Deep Server Scan',    'channels + roles + webhooks + perms'),
+        ('2','📨','DM Reader',           'อ่านข้อความใน DM'),
+        ('3','🔑','Permission Audit',    'วิเคราะห์ perms ทุก server'),
+        ('4','🧠','Token Intelligence',  'วิเคราะห์ token + sessions + flags'),
+        ('5','💰','Full Payment Scan',   'billing + subs + payment history'),
+        ('6','👁','Friend Profile Scan', 'ดู mutual servers + profile เพื่อน'),
+        ('7','⚡','Bulk Advanced',       'bulk check + billing + nitro filter'),
+        ('0','🔙','กลับ',               ''),
+    ]
+    BACTS = {
+        '1': 'deep_server',
+        '2': 'dm_reader',
+        '3': 'perm_audit',
+        '4': 'token_intel',
+        '5': 'payment',
+        '6': 'friend_scan',
+        '7': 'bulk_adv',
+    }
+
+    # Get token first
+    banner()
+    title("BRUTAL SCAN  —  โหมดสแกนโหด", Rd, '💀')
+    warn("โหมดนี้ดึงข้อมูลเชิงลึก  ใช้เฉพาะ token ของตัวเองเท่านั้น!")
+    blank()
+
+    # For bulk we handle separately
+    t, res, d, dec, is_bot = None, None, None, None, False
+
+    while True:
+        banner()
+        print(f"  {Rd}{'═'*W}{R}")
+        print(f"  {BD}{Rd}  BRUTAL SCAN  —  Advanced Intelligence{R}")
+        print(f"  {Rd}{'═'*W}{R}")
+        blank()
+
+        if t and res and res.get('ok'):
+            disc = d.get('discriminator','0')
+            un   = f"@{d.get('username','?')}" if disc in ('0',None,'') \
+                   else f"{d.get('username','?')}#{disc}"
+            print(f"  {tag_ok('TOKEN')}  {BD}{Wh}{un}{R}  {DM}{res['type']}{R}")
+        else:
+            print(f"  {tag_err('NO TOKEN')}  {DM}ยังไม่ได้ใส่โทเคน{R}")
+        blank()
+
+        for num, icon, name, sub in BMENU:
+            c   = Rd if num=='0' else Wh
+            sub_txt = f"  {DM}{sub}{R}" if sub else ''
+            if num == '0':
+                print(f"  {Rd}{BD} {num} {R}  {icon}  {Rd}{name}{R}")
+            else:
+                print(f"  {Rd}{BD} {num} {R}  {icon}  {c}{BD}{name}{R}{sub_txt}")
+
+        blank(); hr('─', Rd)
+        ch = ask("เลือก")
+
+        if ch == '0': break
+
+        if ch == '7':
+            # Bulk advanced
+            banner()
+            title("Bulk Advanced Check", Mg, '⚡')
+            info("ใส่โทเคนทีละบรรทัด  พิมพ์ done เพื่อเริ่ม")
+            blank()
+            tokens, i = [], 1
+            while True:
+                tk = _inp(f"  {Cy}Token {i}{R}  {DM}>{R}  ")
+                if not tk or tk.lower()=='done': break
+                tokens.append(tk); i += 1
+            if tokens:
+                blank(); hr_thick(Mg)
+                brutal_bulk_advanced(tokens)
+            else:
+                err("ไม่มีโทเคน")
+            pause(); continue
+
+        # ต้องการ token สำหรับโหมดอื่น
+        if not t or not res or not res.get('ok'):
+            banner()
+            title("BRUTAL SCAN", Rd, '💀')
+            t = get_tok()
+            if not t: continue
+            if not valid_fmt(t):
+                err("รูปแบบไม่ถูกต้อง"); pause(); t=None; continue
+            spin("ตรวจสอบโทเคน", 1.2, 'pulse', Rd)
+            res = check_token(t)
+            if not res['ok']:
+                err(f"โทเคนไม่ถูกต้อง: {res.get('why','')}"); pause(); t=None; continue
+            d      = res['data']
+            dec    = decode_tok(t)
+            is_bot = res['type']=='Bot Token'
+            ok(f"Token OK  —  {res['type']}")
+
+        # Run selected scan
+        if ch == '1': brutal_server_deep(t, is_bot)
+        elif ch == '2':
+            if is_bot: err("Bot Token ไม่รองรับ DM Reader")
+            else: brutal_dm_reader(t)
+        elif ch == '3': brutal_permission_audit(t, is_bot)
+        elif ch == '4': brutal_token_intel(t, d, dec)
+        elif ch == '5':
+            if is_bot: err("Bot Token ไม่รองรับ Payment Scan")
+            else: brutal_payment_full(t)
+        elif ch == '6':
+            if is_bot: err("Bot Token ไม่รองรับ Friend Scan")
+            else: brutal_friend_dm_flood(t)
+        else:
+            err("กรุณาเลือก 0-7"); time.sleep(0.7); continue
+
+        pause()
+
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  Modes                                               ║
@@ -975,18 +1673,19 @@ def show_help():
 # ╚══════════════════════════════════════════════════════╝
 MENU = [
     ('1','🔍','Full Check',      'ตรวจสอบทุกอย่าง',        Gr,  True),
-    ('2','⚙ ','Advanced Scan',   'เลือก scan เองได้',       Mg,  False),
-    ('3','🎁','Gift Checker',    'ตรวจสอบ Gift Code',        Ye,  False),
-    ('4','🏆','HypeSquad',       'เปลี่ยน House',            Cy,  False),
-    ('5','📴','Offline Decode',  'ไม่ใช้เน็ต',               Ye,  False),
-    ('6','📋','Format Check',    'ตรวจรูปแบบ',               Cy,  False),
-    ('7','📦','Bulk Check',      'หลายโทเคน',                Mg,  False),
-    ('8','📖','คู่มือ',           '',                         Wh,  False),
+    ('2','💀','BRUTAL SCAN',     'สแกนโหด — Deep Intel',    Rd,  False),
+    ('3','⚙ ','Advanced Scan',   'เลือก scan เองได้',       Mg,  False),
+    ('4','🎁','Gift Checker',    'ตรวจสอบ Gift Code',        Ye,  False),
+    ('5','🏆','HypeSquad',       'เปลี่ยน House',            Cy,  False),
+    ('6','📴','Offline Decode',  'ไม่ใช้เน็ต',               Ye,  False),
+    ('7','📋','Format Check',    'ตรวจรูปแบบ',               Cy,  False),
+    ('8','📦','Bulk Check',      'หลายโทเคน',                Mg,  False),
+    ('9','📖','คู่มือ',           '',                         Wh,  False),
     ('0','🚪','ออก',             '',                         Rd,  False),
 ]
 ACTS = {
-    '1':mode_full,'2':mode_advanced,'3':mode_gift,'4':mode_hypesquad,
-    '5':mode_offline,'6':mode_fmt,'7':mode_bulk,'8':show_help,
+    '1':mode_full,'2':mode_brutal,'3':mode_advanced,'4':mode_gift,
+    '5':mode_hypesquad,'6':mode_offline,'7':mode_fmt,'8':mode_bulk,'9':show_help,
 }
 
 def main():
@@ -1012,7 +1711,7 @@ def main():
         print(f"  {Cy}{'─'*W}{R}")
 
         try:
-            ch = _inp(f"\n  {Cy}{BD}เลือก (0-8){R}  {DM}>{R}  ")
+            ch = _inp(f"\n  {Cy}{BD}เลือก (0-9){R}  {DM}>{R}  ")
         except EOFError: break
 
         if ch == '0':
@@ -1024,7 +1723,7 @@ def main():
         elif ch in ACTS:
             ACTS[ch]()
         else:
-            err("กรุณาเลือก 0-8")
+            err("กรุณาเลือก 0-9")
             time.sleep(0.7)
 
 if __name__ == '__main__':
