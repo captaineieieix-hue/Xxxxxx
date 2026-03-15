@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Discord Token Checker v4.1 — Termux Edition
+รองรับภาษาไทยอย่างถูกต้อง  (Thai-aware display width)
+"""
 
-import sys, os, re, base64, time, json
+import sys, os, re, base64, time
 from datetime import datetime
+
+# ── ensure UTF-8 stdout ───────────────────────────────────────────
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+os.environ.setdefault('LANG', 'th_TH.UTF-8')
 
 try:
     import requests
 except ImportError:
-    print("\n[!] ไม่พบ requests  รันคำสั่ง:  pip install requests\n")
+    print("\n[!] ไม่พบ requests\n    pip install requests\n")
     sys.exit(1)
 
 # ══════════════════════════════════════════════════════════════════
@@ -16,6 +26,8 @@ except ImportError:
 R  = '\033[0m'
 BD = '\033[1m'
 DM = '\033[2m'
+IT = '\033[3m'
+UL = '\033[4m'
 
 Rd = '\033[91m'
 Gr = '\033[92m'
@@ -25,12 +37,12 @@ Mg = '\033[95m'
 Cy = '\033[96m'
 Wh = '\033[97m'
 
-BGb = '\033[44m'
-BGc = '\033[46m'
 BGm = '\033[45m'
+BGb = '\033[44m'
+BGg = '\033[42m'
+BGr = '\033[41m'
 
 GRAD = ['\033[95m','\033[94m','\033[96m','\033[94m','\033[95m']
-
 def gradient(text):
     out, i = '', 0
     for ch in text:
@@ -41,7 +53,44 @@ def gradient(text):
     return out + R
 
 # ══════════════════════════════════════════════════════════════════
-#  UI Helpers  (แก้ Thai alignment)
+#  Thai-aware display width
+# ══════════════════════════════════════════════════════════════════
+# Thai combining / zero-width characters (ไม่กินพื้นที่แสดงผล)
+_THAI_ZERO = frozenset([
+    0x0E31,                          # ั  sara a (above)
+    *range(0x0E34, 0x0E3B),          # ิ ี ึ ื ุ ู ฺ
+    *range(0x0E47, 0x0E4F),          # ็ ่ ้ ๊ ๋ ์ ํ ๎
+])
+
+def dw(text: str) -> int:
+    """คำนวณความกว้างที่แสดงผลจริงของข้อความ (รองรับ Thai combining chars)"""
+    if not text:
+        return 0
+    # ลบ ANSI escape codes ออกก่อน
+    clean = re.sub(r'\033\[[0-9;]*m', '', text)
+    width = 0
+    for ch in clean:
+        cp = ord(ch)
+        if cp in _THAI_ZERO:
+            continue          # zero-width combining
+        elif cp > 0x1000:
+            width += 1        # CJK / Thai consonants / other unicode = 1
+        else:
+            width += 1        # ASCII = 1
+    return width
+
+def rpad(text: str, width: int, fill=' ') -> str:
+    """Right-pad โดยใช้ display width จริง (ไม่ใช้ len)"""
+    diff = width - dw(text)
+    return text + fill * max(diff, 0)
+
+def lpad(text: str, width: int, fill=' ') -> str:
+    """Left-pad โดยใช้ display width จริง"""
+    diff = width - dw(text)
+    return fill * max(diff, 0) + text
+
+# ══════════════════════════════════════════════════════════════════
+#  UI
 # ══════════════════════════════════════════════════════════════════
 W = 54
 
@@ -54,32 +103,28 @@ def hr(ch='─', c=Cy):
     print(f"  {c}{ch*W}{R}")
 
 def title(txt, c=Mg):
-    print(f"\n  {c}{BD}{'─'*W}{R}")
-    print(f"  {c}{BD}  {txt}{R}")
-    print(f"  {c}{BD}{'─'*W}{R}\n")
-
-# row แบบ 2 บรรทัด — ไม่มี ljust — ไม่พัง Thai
-def row(icon, label, value, lc=Bl, vc=Wh):
-    print(f"  {lc}{icon}  {BD}{label}{R}")
-    print(f"       {vc}{value}{R}")
-
-# row แบบ 1 บรรทัด — ใช้กับ label ภาษาอังกฤษเท่านั้น
-def row1(icon, label, value, lc=Bl, vc=Wh):
-    pad = max(20 - len(label), 1)
-    print(f"  {lc}{icon}  {BD}{label}{R}{' '*pad}{vc}{value}{R}")
+    print(f"\n  {c}{BD}{'═'*W}{R}")
+    t_pad = rpad(f"  {txt}", W + 2)
+    print(f"  {c}{BD}{t_pad}{R}")
+    print(f"  {c}{BD}{'═'*W}{R}\n")
 
 def spin(msg, secs=1.2):
     fr = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
     t, i = time.time() + secs, 0
     while time.time() < t:
-        print(f"\r  {Cy}{fr[i%10]}{R}  {BD}{msg}...{R}", end='', flush=True)
+        print(f"\r  {Cy}{fr[i%10]}{R}  {BD}{msg}{R}  ", end='', flush=True)
         time.sleep(0.07); i += 1
-    print('\r' + ' '*50 + '\r', end='')
+    print('\r' + ' '*55 + '\r', end='')
 
-def ok(msg):   print(f"  {Gr}{BD}[+]{R}  {Gr}{msg}{R}")
-def err(msg):  print(f"  {Rd}{BD}[-]{R}  {Rd}{msg}{R}")
-def info(msg): print(f"  {Cy}{BD}[i]{R}  {msg}{R}")
-def warn(msg): print(f"  {Ye}{BD}[!]{R}  {Ye}{msg}{R}")
+def ok(msg):   print(f"  {Gr}{BD} + {R}  {Gr}{msg}{R}")
+def err(msg):  print(f"  {Rd}{BD} - {R}  {Rd}{msg}{R}")
+def info(msg): print(f"  {Cy}{BD} i {R}  {msg}")
+def warn(msg): print(f"  {Ye}{BD} ! {R}  {Ye}{msg}{R}")
+
+# row แบบ inline — ใช้ dw() แทน len() เพื่อ align ภาษาไทย
+def row(icon, label, value, lc=Bl, vc=Wh, col_width=18):
+    padded = rpad(label, col_width)
+    print(f"  {lc}{icon}{R}  {BD}{lc}{padded}{R}  {vc}{value}{R}")
 
 # ══════════════════════════════════════════════════════════════════
 #  BANNER
@@ -105,7 +150,8 @@ def banner():
     for line in ART.split('\n'):
         print(gradient(line))
     print(f"  {DM}{'─'*W}{R}")
-    print(f"  {DM}v4.0  |  Termux Edition  |  No Bot Needed{R}")
+    ver = rpad("  v4.1  |  Termux Edition  |  Thai Support", W)
+    print(f"  {DM}{ver}{R}")
     print(f"  {DM}{'─'*W}{R}\n")
 
 # ══════════════════════════════════════════════════════════════════
@@ -127,9 +173,9 @@ def decode_tok(t):
         age = datetime.now() - ca
         return {
             'uid': uid, 'created': ca,
-            'years': age.days//365,
-            'months': (age.days%365)//30,
-            'days': age.days%30
+            'years':  age.days // 365,
+            'months': (age.days % 365) // 30,
+            'days':   age.days % 30,
         }
     except: return None
 
@@ -137,15 +183,10 @@ def mask(t):
     c = clean(t)
     return c[:10]+'·'*18+c[-6:] if len(c)>20 else '·'*len(c)
 
-def _headers(t, bot=False):
-    pfx = 'Bot ' if bot else ''
-    return {'Authorization': pfx+clean(t), 'Content-Type':'application/json'}
-
 def _get(ep, t, bot=False):
-    r = requests.get(
-        f'https://discord.com/api/v10{ep}',
-        headers=_headers(t, bot), timeout=10)
-    return r
+    pfx = 'Bot ' if bot else ''
+    h   = {'Authorization': pfx+clean(t), 'Content-Type':'application/json'}
+    return requests.get(f'https://discord.com/api/v10{ep}', headers=h, timeout=10)
 
 def check_token(t):
     try:
@@ -159,11 +200,10 @@ def check_token(t):
     except requests.Timeout:
         return {'ok':False,'why':'Timeout — ตรวจสอบเน็ต'}
     except requests.ConnectionError:
-        return {'ok':False,'why':'No Internet'}
+        return {'ok':False,'why':'ไม่มีอินเทอร์เน็ต'}
     except Exception as e:
         return {'ok':False,'why':str(e)}
 
-# ── Extra APIs ────────────────────────────────────────────────────
 def get_guilds(t, bot=False):
     try:
         r = _get('/users/@me/guilds', t, bot)
@@ -195,84 +235,96 @@ def get_relationships(t):
     except: return []
 
 # ══════════════════════════════════════════════════════════════════
-#  DISPLAY
+#  DISPLAY RESULT
 # ══════════════════════════════════════════════════════════════════
 FLAG_MAP = {
     1:'Staff', 2:'Partner', 4:'HypeSquad Events',
-    8:'Bug Hunter Lv1', 64:'HypeSquad Bravery',
-    128:'HypeSquad Brilliance', 256:'HypeSquad Balance',
-    512:'Early Supporter', 16384:'Bug Hunter Lv2',
-    131072:'Verified Bot Dev', 4194304:'Active Dev'
+    8:'Bug Hunter Lv1', 64:'Bravery', 128:'Brilliance',
+    256:'Balance', 512:'Early Supporter',
+    16384:'Bug Hunter Lv2', 131072:'Verified Bot Dev',
+    4194304:'Active Dev',
 }
+
+CW = 16   # column width สำหรับ label (display width)
 
 def print_decoded(dec):
     title("ข้อมูลจากโทเคน  (Offline Decode)", Cy)
     if dec:
         ok("รูปแบบโทเคน : ถูกต้อง")
-        row1('ID','User ID',   dec['uid'], Bl, Wh)
-        row ('📅','สร้างบัญชีเมื่อ', dec['created'].strftime('%Y-%m-%d  %H:%M:%S'), Bl, Ye)
-        age_str = f"{dec['years']} ปี  {dec['months']} เดือน  {dec['days']} วัน"
-        row ('⏱','อายุบัญชี', age_str, Bl, Cy)
+        print()
+        row('ID', 'User ID',        dec['uid'],  Bl, Wh, CW)
+        row('📅', 'สร้างบัญชีเมื่อ', dec['created'].strftime('%Y-%m-%d  %H:%M:%S'), Bl, Ye, CW)
+        age = f"{dec['years']} ปี  {dec['months']} เดือน  {dec['days']} วัน"
+        row('⏱', 'อายุบัญชี',      age,          Bl, Cy, CW)
     else:
         err("รูปแบบโทเคน : ไม่ถูกต้อง")
 
 def print_online(res, full=False, token=None):
-    title("ผลตรวจสอบออนไลน์  (Discord API)", Ye)
+    title("ผลการตรวจสอบออนไลน์  (Discord API)", Ye)
     if not res['ok']:
         err("โทเคนใช้งานไม่ได้  ❌")
-        warn(res.get('why','Unknown'))
+        warn(res.get('why','Unknown error'))
         return False
 
     d      = res['data']
-    is_bot = res['type']=='Bot Token'
+    is_bot = res['type'] == 'Bot Token'
     disc   = d.get('discriminator','0')
     uname  = f"@{d.get('username','?')}" if disc in ('0',None,'') \
              else f"{d.get('username','?')}#{disc}"
 
     ok("สถานะ : โทเคนใช้งานได้  ✅")
-    row1('>>','Token Type', res['type'],  Cy, Wh)
-    row1('>>','Username',   uname,        Bl, Wh)
-    row1('>>','Account ID', d.get('id','?'), Bl, Wh)
+    print()
+    row('>>', 'Token Type', res['type'],       Cy, Wh, CW)
+    row('👤', 'Username',   uname,             Bl, Wh, CW)
+    row('ID', 'Account ID', d.get('id','?'),   Bl, Wh, CW)
 
     if is_bot:
-        row('>>','ประเภทบัญชี', 'Bot Account  🤖', Cy, Cy)
-        pub = 'Public Bot  🌐' if d.get('public_flags') else 'Private Bot  🔒'
-        row('>>','สถานะบอท', pub, Cy, Wh)
+        row('🤖', 'ประเภทบัญชี', 'Bot Account', Cy, Cy, CW)
+        pub = 'Public  🌐' if d.get('public_flags') else 'Private  🔒'
+        row('🌐', 'สถานะบอท',   pub,            Cy, Wh, CW)
     else:
         if d.get('email'):
             ep = d['email'].split('@')
             em = ep[0][:2]+'*****@'+ep[1] if len(ep)==2 else '***'
-            row('>>','อีเมล', em, Bl, Wh)
+            row('📧', 'อีเมล', em, Bl, Wh, CW)
 
-        v = d.get('verified',False)
-        row('>>','ยืนยันอีเมล',
-            '✅ ยืนยันแล้ว' if v else '❌ ยังไม่ยืนยัน', Bl, Gr if v else Rd)
+        v = d.get('verified', False)
+        row('✉', 'ยืนยันอีเมล',
+            '✅ ยืนยันแล้ว' if v else '❌ ยังไม่ยืนยัน',
+            Bl, Gr if v else Rd, CW)
 
         if 'mfa_enabled' in d:
             m = d['mfa_enabled']
-            row('>>','2FA / Two-Factor',
-                '✅ เปิดใช้งาน' if m else '❌ ปิดใช้งาน', Bl, Gr if m else Rd)
+            row('🔐', '2FA / Two-Factor',
+                '✅ เปิดใช้งาน' if m else '❌ ปิดใช้งาน',
+                Bl, Gr if m else Rd, CW)
 
-        nitro_map = {0:'ไม่มี Nitro  🆓',1:'Nitro Classic  💎',
-                     2:'Nitro  💎',3:'Nitro Basic  💎'}
+        nitro_map = {
+            0: 'ไม่มี Nitro  🆓',
+            1: 'Nitro Classic  💎',
+            2: 'Nitro  💎',
+            3: 'Nitro Basic  💎',
+        }
         if 'premium_type' in d:
             nt = d['premium_type']
-            row('>>','Nitro', nitro_map.get(nt,'?'), Bl, Cy if nt>0 else DM)
+            row('💠', 'Nitro',
+                nitro_map.get(nt, '?'),
+                Bl, Cy if nt > 0 else DM, CW)
 
         if 'phone' in d:
             ph = d['phone']
-            row('>>','เบอร์โทรศัพท์',
-                ph if ph else '❌ ไม่ได้ผูกเบอร์', Bl, Ye if ph else Rd)
+            row('📱', 'เบอร์โทรศัพท์',
+                ph if ph else '❌ ยังไม่ผูกเบอร์',
+                Bl, Ye if ph else Rd, CW)
 
         if 'locale' in d:
-            row1('>>','Locale', d.get('locale','?'), Bl, Wh)
+            row('🌍', 'Locale', d.get('locale','?'), Bl, Wh, CW)
 
-        pf     = d.get('public_flags',0)
+        pf     = d.get('public_flags', 0)
         badges = [v for k,v in FLAG_MAP.items() if pf & k]
         if badges:
-            row('>>','Badges  🎖', '  |  '.join(badges), Mg, Ye)
+            row('🎖', 'Badges', '  '.join(badges), Mg, Ye, CW)
 
-    # ── Advanced ─────────────────────────────────────────────────
     if full and token:
         print()
         title("ข้อมูลเพิ่มเติม  (Advanced)", Mg)
@@ -286,24 +338,24 @@ def _show_advanced(t, is_bot):
     guilds = get_guilds(t, is_bot)
     if guilds and isinstance(guilds, list):
         own = sum(1 for g in guilds if g.get('owner'))
-        row('>>','เซิร์ฟเวอร์ที่อยู่', f"{len(guilds)} เซิร์ฟเวอร์", Ye, Ye)
+        row('🏰', 'เซิร์ฟเวอร์',   f"{len(guilds)} แห่ง", Ye, Ye, CW)
         if own:
-            row('>>','เป็นเจ้าของ', f"{own} เซิร์ฟเวอร์  👑", Ye, Cy)
+            row('👑', 'เป็นเจ้าของ', f"{own} แห่ง",       Ye, Cy, CW)
         for g in guilds[:5]:
             tag = '  [Owner]' if g.get('owner') else ''
             print(f"    {DM}• {g.get('name','?')}{tag}{R}")
-        if len(guilds)>5:
+        if len(guilds) > 5:
             print(f"    {DM}  ... และอีก {len(guilds)-5} เซิร์ฟเวอร์{R}")
     else:
-        info("ดึงเซิร์ฟเวอร์ไม่ได้ (อาจเป็น Bot Token)")
+        info("ดึงข้อมูลเซิร์ฟเวอร์ไม่ได้")
 
     if not is_bot:
         # Connections
         print()
         spin("ดึง Linked Accounts", 0.8)
         conns = get_connections(t)
-        if conns and isinstance(conns,list):
-            row('>>','Linked Accounts', f"{len(conns)} บัญชี  🔗", Bl, Bl)
+        if conns and isinstance(conns, list):
+            row('🔗', 'Linked Accounts', f"{len(conns)} บัญชี", Bl, Bl, CW)
             for c in conns:
                 vf = '✅' if c.get('verified') else '❌'
                 print(f"    {DM}• [{c.get('type','?').upper()}] {c.get('name','?')}  {vf}{R}")
@@ -314,15 +366,15 @@ def _show_advanced(t, is_bot):
         print()
         spin("ดึงรายชื่อเพื่อน", 0.8)
         rels = get_relationships(t)
-        if rels and isinstance(rels,list):
+        if rels and isinstance(rels, list):
             friends  = [x for x in rels if x.get('type')==1]
             blocked  = [x for x in rels if x.get('type')==2]
             incoming = [x for x in rels if x.get('type')==3]
-            row('>>','เพื่อน', f"{len(friends)} คน  👥", Gr, Gr)
+            row('👥', 'เพื่อน',        f"{len(friends)} คน",  Gr, Gr, CW)
             if blocked:
-                row('>>','บล็อค', f"{len(blocked)} คน  🚫", Rd, Rd)
+                row('🚫', 'บล็อค',    f"{len(blocked)} คน",  Rd, Rd, CW)
             if incoming:
-                row('>>','คำขอเพื่อน', f"{len(incoming)} คน  📩", Ye, Ye)
+                row('📩', 'คำขอเพื่อน', f"{len(incoming)} คน", Ye, Ye, CW)
         else:
             info("ดึงรายชื่อเพื่อนไม่ได้")
 
@@ -330,15 +382,14 @@ def _show_advanced(t, is_bot):
         print()
         spin("ตรวจสอบ Payment Methods", 0.8)
         bills = get_billing(t)
-        if bills and isinstance(bills,list):
-            row('>>','Payment Methods', f"{len(bills)} วิธี  💳", Cy, Cy)
+        if bills and isinstance(bills, list):
+            row('💳', 'Payment Methods', f"{len(bills)} รายการ", Cy, Cy, CW)
             for b in bills:
                 btype = {1:'Card',2:'PayPal',3:'Google Pay'}.get(b.get('type',0),'Unknown')
                 l4    = b.get('last_4','')
                 exp   = f"{b.get('expires_month','?')}/{b.get('expires_year','?')}"
                 vld   = '✅' if b.get('invalid') is False else '⚠'
-                txt   = f"{btype}  {'****'+l4 if l4 else ''}  exp:{exp}  {vld}"
-                print(f"    {DM}• {txt}{R}")
+                print(f"    {DM}• {btype}  {'****'+l4 if l4 else ''}  {exp}  {vld}{R}")
         else:
             info("ไม่มี Payment หรือดึงไม่ได้")
 
@@ -346,11 +397,12 @@ def _show_advanced(t, is_bot):
         print()
         spin("ตรวจสอบ Server Boosts", 0.8)
         boosts = get_boosts(t)
-        if boosts and isinstance(boosts,list):
+        if boosts and isinstance(boosts, list):
             used   = sum(1 for b in boosts if b.get('premium_guild_subscription'))
-            unused = len(boosts)-used
-            row('>>','Server Boosts',
-                f"รวม {len(boosts)}  |  ใช้แล้ว {used}  |  ว่าง {unused}  🚀", Mg, Mg)
+            unused = len(boosts) - used
+            row('🚀', 'Server Boosts',
+                f"รวม {len(boosts)}  ใช้แล้ว {used}  ว่าง {unused}",
+                Mg, Mg, CW)
         else:
             info("ไม่มี Server Boosts")
 
@@ -361,41 +413,46 @@ def save_report(token, dec, res):
     ts    = datetime.now().strftime('%Y%m%d_%H%M%S')
     fname = os.path.expanduser(f"~/token_report_{ts}.txt")
     lines = [
-        "Discord Token Report",
-        f"Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "="*52,
-        f"Token  : {mask(token)}",
+        "═"*52,
+        "  Discord Token Report",
+        f"  วันที่ : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "═"*52,
+        f"  Token  : {mask(token)}",
     ]
     if dec:
         lines += [
-            f"User ID     : {dec['uid']}",
-            f"Created     : {dec['created'].strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Account Age : {dec['years']}y {dec['months']}m {dec['days']}d",
+            f"  User ID     : {dec['uid']}",
+            f"  สร้างเมื่อ  : {dec['created'].strftime('%Y-%m-%d %H:%M:%S')}",
+            f"  อายุบัญชี   : {dec['years']}y {dec['months']}m {dec['days']}d",
         ]
     if res and res.get('ok'):
-        d = res['data']
+        d     = res['data']
         disc  = d.get('discriminator','0')
         uname = f"@{d.get('username','?')}" if disc in ('0',None,'') \
                 else f"{d.get('username','?')}#{disc}"
         lines += [
-            f"Type        : {res['type']}",
-            f"Username    : {uname}",
-            f"Account ID  : {d.get('id','?')}",
-            f"Email       : {d.get('email','N/A')}",
-            f"Verified    : {d.get('verified','?')}",
-            f"MFA         : {d.get('mfa_enabled','?')}",
-            f"Nitro       : {d.get('premium_type','?')}",
-            f"Phone       : {d.get('phone','N/A')}",
+            f"  Type        : {res['type']}",
+            f"  Username    : {uname}",
+            f"  ID          : {d.get('id','?')}",
+            f"  Email       : {d.get('email','N/A')}",
+            f"  Verified    : {d.get('verified','?')}",
+            f"  MFA         : {d.get('mfa_enabled','?')}",
+            f"  Nitro       : {d.get('premium_type','?')}",
+            f"  Phone       : {d.get('phone','N/A')}",
         ]
-    with open(fname,'w',encoding='utf-8') as f:
+    lines.append("═"*52)
+    with open(fname, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
     return fname
 
 # ══════════════════════════════════════════════════════════════════
-#  INPUT
+#  INPUT HELPER
 # ══════════════════════════════════════════════════════════════════
 def get_tok(prompt="ใส่โทเคน Discord"):
-    t = input(f"\n  {BD}{Cy}>>  {prompt}: {R}").strip()
+    try:
+        t = input(f"\n  {BD}{Cy}>>  {prompt}: {R}").strip()
+    except EOFError:
+        return None
     if not t:
         err("กรุณาใส่โทเคน"); pause("กด Enter เพื่อกลับ"); return None
     return t
@@ -405,25 +462,30 @@ def get_tok(prompt="ใส่โทเคน Discord"):
 # ══════════════════════════════════════════════════════════════════
 def mode_full():
     banner()
-    title("Full Check  —  ตรวจสอบทุกอย่าง", Gr)
-    info("API Check + Servers + Friends + Billing + Boosts")
+    title("Full Check  —  ตรวจสอบทั้งหมด", Gr)
+    info("API + Servers + Friends + Billing + Boosts + Badges")
     t = get_tok()
     if not t: return
     if not valid_fmt(t):
         err("รูปแบบโทเคนไม่ถูกต้อง")
-        print(f"  {Ye}>> {mask(t)}{R}")
+        print(f"\n  {Ye}{mask(t)}{R}")
         pause("กด Enter เพื่อกลับ"); return
+
     spin("กำลังตรวจสอบ Discord API", 1.5)
     dec = decode_tok(t)
     res = check_token(t)
+
     print_decoded(dec)
     valid = print_online(res, full=True, token=t)
-    print(f"\n  {Ye}>> Token (masked): {mask(t)}{R}")
+
+    print(f"\n  {Ye}>> Token: {mask(t)}{R}")
+
     if valid:
-        sv = input(f"\n  {BD}{Cy}>> บันทึก Report? (y/n): {R}").strip().lower()
+        sv = input(f"\n  {BD}{Cy}>>  บันทึก Report? (y/n): {R}").strip().lower()
         if sv == 'y':
             f = save_report(t, dec, res)
-            ok(f"บันทึกแล้ว: {f}")
+            ok(f"บันทึกแล้วที่: {f}")
+
     print()
     hr('─', Rd)
     warn("ควร Reset โทเคนทันทีหลังการตรวจสอบ")
@@ -435,13 +497,13 @@ def mode_full():
 def mode_offline():
     banner()
     title("Offline Decode  —  ถอดรหัสโทเคน", Ye)
-    info("ไม่ใช้อินเทอร์เน็ต  ถอดรหัสจากโทเคนเท่านั้น")
+    info("ไม่ใช้อินเทอร์เน็ต  ถอดรหัสข้อมูลจากโทเคนเท่านั้น")
     t = get_tok()
     if not t: return
     spin("ถอดรหัส", 0.7)
     dec = decode_tok(t)
     print_decoded(dec)
-    print(f"\n  {Ye}>> Token (masked): {mask(t)}{R}")
+    print(f"\n  {Ye}>> Token: {mask(t)}{R}")
     pause()
 
 
@@ -456,14 +518,14 @@ def mode_fmt():
         ok("รูปแบบโทเคนถูกต้อง  ✅")
         p = clean(t).split('.')
         print(f"\n  {Cy}{BD}โครงสร้าง:{R}")
-        row1('>>','Part 1  (User ID)',    f"{len(p[0])} chars", Bl, Wh)
-        row1('>>','Part 2  (Timestamp)',  f"{len(p[1])} chars", Bl, Wh)
-        row1('>>','Part 3  (HMAC)',       f"{len(p[2])} chars", Bl, Wh)
+        row('>>', 'Part 1  User ID',    f"{len(p[0])} chars", Bl, Wh, CW)
+        row('>>', 'Part 2  Timestamp',  f"{len(p[1])} chars", Bl, Wh, CW)
+        row('>>', 'Part 3  HMAC',       f"{len(p[2])} chars", Bl, Wh, CW)
     else:
         err("รูปแบบโทเคนไม่ถูกต้อง  ❌")
         print(f"\n  {Ye}{BD}รูปแบบที่ถูกต้อง:{R}")
         print(f"  {DM}  xxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxx{R}")
-        print(f"  {DM}  Part1(24-28).Part2(6-7).Part3(27-40){R}")
+        print(f"  {DM}  24-28  .  6-7  .  27-40  chars{R}")
     hr(); pause()
 
 
@@ -474,14 +536,17 @@ def mode_bulk():
     print()
     tokens, i = [], 1
     while True:
-        t = input(f"  {Cy}Token {i}: {R}").strip()
-        if not t or t.lower()=='done': break
+        try:
+            t = input(f"  {Cy}Token {i}: {R}").strip()
+        except EOFError:
+            break
+        if not t or t.lower() == 'done': break
         tokens.append(t); i += 1
 
     if not tokens: err("ไม่มีโทเคน"); pause(); return
 
     ok_list, fail_list = [], []
-    for idx, t in enumerate(tokens,1):
+    for idx, t in enumerate(tokens, 1):
         hr('·', DM)
         print(f"  {BD}[{idx}/{len(tokens)}]{R}  {mask(t)}")
         if not valid_fmt(t):
@@ -494,45 +559,44 @@ def mode_bulk():
             un   = f"@{d.get('username','?')}" if disc in ('0',None,'') \
                    else f"{d.get('username','?')}#{disc}"
             nt   = {0:'Free',1:'Classic',2:'Nitro',3:'Basic'}.get(d.get('premium_type',0),'?')
-            mfa  = '🔐' if d.get('mfa_enabled') else '  '
-            ok(f"VALID  |  {un}  |  {res['type']}  |  Nitro:{nt}  {mfa}")
+            mfa  = '🔐' if d.get('mfa_enabled') else ''
+            ok(f"VALID  {un}  |  {res['type']}  |  {nt}  {mfa}")
             ok_list.append({'token':t,'username':un,'type':res['type'],'nitro':nt})
         else:
             err(f"INVALID  |  {res.get('why','?')}"); fail_list.append(t)
 
-    print(); hr('═',Mg)
-    print(f"  {BD}สรุปผล{R}   {Gr}Valid: {len(ok_list)}{R}  |  {Rd}Invalid: {len(fail_list)}{R}")
-    hr('═',Mg)
+    print(); hr('═', Mg)
+    print(f"\n  {BD}สรุปผล{R}   {Gr}✅ Valid: {len(ok_list)}{R}   {Rd}❌ Invalid: {len(fail_list)}{R}\n")
+    hr('═', Mg)
 
     if ok_list:
-        sv = input(f"\n  {BD}{Cy}>> บันทึก Valid Tokens? (y/n): {R}").strip().lower()
+        sv = input(f"\n  {BD}{Cy}>>  บันทึก Valid Tokens? (y/n): {R}").strip().lower()
         if sv == 'y':
             ts    = datetime.now().strftime('%Y%m%d_%H%M%S')
             fname = os.path.expanduser(f"~/bulk_valid_{ts}.txt")
             with open(fname,'w',encoding='utf-8') as f:
                 for x in ok_list:
-                    f.write(f"{x['token']}  |  {x['username']}  |  {x['type']}  |  Nitro:{x['nitro']}\n")
-            ok(f"บันทึกแล้ว: {fname}")
+                    f.write(f"{x['token']}  |  {x['username']}  |  {x['type']}  |  {x['nitro']}\n")
+            ok(f"บันทึกแล้วที่: {fname}")
     pause()
 
 
 def mode_guilds():
     banner()
-    title("Guild List  —  ดูรายการเซิร์ฟเวอร์", Ye)
+    title("Guild List  —  รายการเซิร์ฟเวอร์", Ye)
     t = get_tok()
     if not t: return
     if not valid_fmt(t): err("รูปแบบไม่ถูกต้อง"); pause(); return
     spin("ตรวจสอบโทเคน", 1.0)
     res = check_token(t)
     if not res['ok']: err("โทเคนไม่ถูกต้อง"); pause(); return
-    is_bot = res['type']=='Bot Token'
     spin("ดึงรายการเซิร์ฟเวอร์", 1.2)
-    guilds = get_guilds(t, is_bot)
-    if not guilds or not isinstance(guilds,list):
+    guilds = get_guilds(t, res['type']=='Bot Token')
+    if not guilds or not isinstance(guilds, list):
         info("ไม่พบข้อมูลเซิร์ฟเวอร์"); pause(); return
     hr()
-    print(f"  {BD}{Ye}พบ {len(guilds)} เซิร์ฟเวอร์{R}\n")
-    for idx, g in enumerate(guilds,1):
+    print(f"\n  {BD}{Ye}พบ {len(guilds)} เซิร์ฟเวอร์{R}\n")
+    for idx, g in enumerate(guilds, 1):
         own = f"  {Cy}[Owner]{R}" if g.get('owner') else ''
         print(f"  {DM}{idx:>3}.{R}  {BD}{g.get('name','?')}{R}{own}")
         print(f"       {DM}ID: {g.get('id','?')}{R}")
@@ -556,25 +620,24 @@ def show_help():
     banner()
     title("คู่มือการใช้งาน", Cy)
     items = [
-        ("1","Full Check",   "เช็คทุกอย่าง API + Servers + Friends + Billing + Boosts"),
-        ("2","Offline",      "ถอดรหัสโทเคน ไม่ใช้อินเทอร์เน็ต"),
-        ("3","Format",       "ตรวจรูปแบบโทเคนเท่านั้น"),
-        ("4","Bulk Check",   "เช็คหลายโทเคนพร้อมกัน  บันทึกผลได้"),
-        ("5","Guild List",   "ดูรายการเซิร์ฟเวอร์ทั้งหมด"),
-        ("6","Quick Info",   "ดูข้อมูลบัญชีแบบรวดเร็ว"),
+        ('1','Full Check',   'เช็คทุกอย่าง API + Servers + Friends + Billing'),
+        ('2','Offline',      'ถอดรหัสโทเคน ไม่ใช้อินเทอร์เน็ต'),
+        ('3','Format',       'ตรวจรูปแบบโทเคนเท่านั้น'),
+        ('4','Bulk Check',   'เช็คหลายโทเคนพร้อมกัน  บันทึกผลได้'),
+        ('5','Guild List',   'ดูรายการเซิร์ฟเวอร์ทั้งหมด'),
+        ('6','Quick Info',   'ดูข้อมูลบัญชีแบบรวดเร็ว'),
     ]
     for num, name, desc in items:
         print(f"  {Cy}{BD}[{num}]{R}  {BD}{name}{R}")
         print(f"       {DM}{desc}{R}\n")
     hr()
     print(f"  {Gr}{BD}วิธีติดตั้งบน Termux{R}")
-    cmds = [
+    for c in [
         "pkg update && pkg install python",
         "pip install requests",
-        "curl -o ~/Checker_Token.py <GitHub Raw URL>",
+        "curl -o ~/Checker_Token.py <URL>",
         "python ~/Checker_Token.py",
-    ]
-    for c in cmds:
+    ]:
         print(f"  {DM}  $ {c}{R}")
     hr(); pause()
 
@@ -582,18 +645,18 @@ def show_help():
 #  MAIN MENU
 # ══════════════════════════════════════════════════════════════════
 MENU = [
-    ('1','🌐','Full Check       (Online + Advanced)', Gr),
-    ('2','📴','Offline Decode   (ไม่ใช้เน็ต)',        Ye),
-    ('3','📋','Format Check     (ตรวจรูปแบบ)',        Cy),
-    ('4','📦','Bulk Check       (หลายโทเคน)',         Mg),
-    ('5','🏰','Guild List       (รายการเซิร์ฟเวอร์)', Ye),
-    ('6','⚡','Quick Info       (ข้อมูลเร็ว)',         Bl),
-    ('7','📖','คู่มือการใช้งาน',                       Wh),
-    ('0','🚪','ออกจากโปรแกรม',                        Rd),
+    ('1','🌐', 'Full Check       (Online + Advanced)', Gr),
+    ('2','📴', 'Offline Decode   (ไม่ใช้เน็ต)',        Ye),
+    ('3','📋', 'Format Check     (ตรวจรูปแบบ)',        Cy),
+    ('4','📦', 'Bulk Check       (หลายโทเคน)',         Mg),
+    ('5','🏰', 'Guild List       (รายการเซิร์ฟเวอร์)', Ye),
+    ('6','⚡', 'Quick Info       (ข้อมูลเร็ว)',         Bl),
+    ('7','📖', 'คู่มือการใช้งาน',                       Wh),
+    ('0','🚪', 'ออกจากโปรแกรม',                        Rd),
 ]
 ACTS = {
     '1':mode_full,'2':mode_offline,'3':mode_fmt,
-    '4':mode_bulk,'5':mode_guilds,'6':mode_quickinfo,'7':show_help
+    '4':mode_bulk,'5':mode_guilds,'6':mode_quickinfo,'7':show_help,
 }
 
 def main():
@@ -602,10 +665,13 @@ def main():
         print(f"  {BD}เลือกโหมด{R}\n")
         hr()
         for num, icon, label, col in MENU:
-            hl = BGm if num=='1' else ''
+            hl = BGm if num == '1' else ''
             print(f"  {col}{BD}{hl} {num} {R}  {icon}  {col}{label}{R}")
         hr()
-        ch = input(f"\n  {BD}>>  เลือก: {R}").strip()
+        try:
+            ch = input(f"\n  {BD}>>  เลือก (0-7): {R}").strip()
+        except EOFError:
+            break
         if ch == '0':
             clr()
             print(f"\n  {Gr}>>  ขอบคุณที่ใช้งาน  See you!{R}\n")
